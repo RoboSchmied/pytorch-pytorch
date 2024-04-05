@@ -858,6 +858,10 @@ class OpOverload(OperatorBase):
 class TorchBindOpOverload(OpOverload):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # All torchbind op are considered as having side-effects
+        from torch._higher_order_ops.effects import register_side_effect_op
+
+        register_side_effect_op(self)
 
         def wrapper(mode, *args, **kwargs):
             return _mannually_invoke_dispatch_mode_in_python(
