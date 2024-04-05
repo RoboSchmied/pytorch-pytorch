@@ -37,6 +37,7 @@ from torch._dynamo.utils import (
     lazy_format_graph_code,
     optimus_scuba_log,
 )
+from torch._functorch import config as functorch_config
 from torch._functorch.aot_autograd import aot_export_module, make_boxed_func
 from torch._inductor.codecache import code_hash, CompiledFxGraph, FxGraphCache
 
@@ -1356,9 +1357,13 @@ def compile_fx(
     )
 
     if V.aot_compilation is True:
-        gm, graph_signature = aot_export_module(
-            model_, example_inputs_, trace_joint=False, decompositions=decompositions
-        )
+        with functorch_config.patch(unlift_effect_tokens=True):
+            gm, graph_signature = aot_export_module(
+                model_,
+                example_inputs_,
+                trace_joint=False,
+                decompositions=decompositions,
+            )
         unlifted_gm = _unlift_graph(model_, gm, graph_signature)
         if "dynamo_flat_name_to_original_fqn" in model_.meta:
             unlifted_gm.meta["dynamo_flat_name_to_original_fqn"] = model_.meta[
@@ -1369,7 +1374,7 @@ def compile_fx(
 
     with V.set_fake_mode(fake_mode), torch._guards.tracing(
         tracing_context
-    ), compiled_autograd.disable():
+    ), compiled_autograd.disable(), functorch_config.patch(unlift_effect_tokens=True):
         return aot_autograd(
             fw_compiler=fw_compiler,
             bw_compiler=bw_compiler,
