@@ -748,14 +748,36 @@ def cache_dir() -> str:
 
 
 @contextlib.contextmanager
-def fresh_inductor_cache(cache_entries=None):
+def temporary_directory(dir=None, delete=True):
+    """
+    tempfile.TemporaryDirectory prior to Python 3.12 does not support an
+    optional delete, so we roll our own:
+    """
+    if dir is not None:
+        try:
+            os.makedirs(dir)
+        except FileExistsError:
+            pass
+    temp_dir = tempfile.mkdtemp(dir=dir)
+    try:
+        yield temp_dir
+    finally:
+        if delete:
+            try:
+                shutil.rmtree(temp_dir)
+            except OSError:
+                pass
+
+
+@contextlib.contextmanager
+def fresh_inductor_cache(cache_entries=None, dir=None, delete=True):
     """
     Contextmanager that provides a clean tmp cachedir for inductor.
 
     Optionally, pass a dict as 'cache_entries' to get a list of filenames and sizes
     generated with this cache instance.
     """
-    with tempfile.TemporaryDirectory() as inductor_cache_dir:
+    with temporary_directory(dir=dir, delete=delete) as inductor_cache_dir:
         with mock.patch.dict(
             os.environ, {"TORCHINDUCTOR_CACHE_DIR": inductor_cache_dir}
         ):
