@@ -47,6 +47,8 @@ class Adamax(Optimizer):
         )
         super().__init__(params, defaults)
 
+    # See #123400
+    @torch._disable_dynamo
     def __setstate__(self, state):
         super().__setstate__(state)
         for group in self.param_groups:
