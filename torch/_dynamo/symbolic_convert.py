@@ -2649,14 +2649,14 @@ class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
                 return
             try:
                 val = tos.next_variable(self)
+            except (StopIteration, exc.UserStopIteration):
+                self.pop()
+                return
+            else:
                 self.push(val)
                 # TODO(voz): Unclear if we need the push None in YIELD_VALUE?
                 self.YIELD_VALUE(inst)
                 self.pop()
-                self.push(tos)
-            except (StopIteration, exc.UserStopIteration):
-                # TODO(jansel): do we need a self.pop() here?
-                return
 
     def SEND(self, inst):
         assert len(self.stack) >= 2
