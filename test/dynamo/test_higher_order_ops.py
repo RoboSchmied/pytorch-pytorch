@@ -4512,29 +4512,29 @@ class GraphModule(torch.nn.Module):
         dual = _unpack_dual_1[1];  _unpack_dual_1 = None
 
         child_4 = torch._C._functorch._unwrap_for_grad(primal, 2);  primal = None
-        child_5 = torch._C._functorch._unwrap_for_grad(primal_1, 2);  primal_1 = None
+        _unwrap_for_grad_1 = torch._C._functorch._unwrap_for_grad(primal_1, 2);  primal_1 = None
 
-        child_6 = torch._C._functorch._unwrap_for_grad(tangent, 2);  tangent = None
-        child_7 = torch._C._functorch._unwrap_for_grad(dual, 2);  dual = None
+        child_5 = torch._C._functorch._unwrap_for_grad(tangent, 2);  tangent = None
+        child_6 = torch._C._functorch._unwrap_for_grad(dual, 2);  dual = None
 
         _exit_dual_level = torch._C._exit_dual_level(0)
         _set_fwd_grad_enabled_1 = torch._C._set_fwd_grad_enabled(True)
         _jvp_decrement_nesting = torch._C._functorch._jvp_decrement_nesting()
         _saved_tensors_hooks_disable_2 = torch._C._autograd._saved_tensors_hooks_disable("torch.func transforms don't yet support saved tensor hooks. Please open an issue with your use case.")
 
+        child_7 = torch._C._functorch._remove_batch_dim(child_5, 1, 12, 0);  child_5 = None
         child_8 = torch._C._functorch._remove_batch_dim(child_6, 1, 12, 0);  child_6 = None
-        child_9 = torch._C._functorch._remove_batch_dim(child_7, 1, 12, 0);  child_7 = None
 
         _vmap_decrement_nesting = torch._C._functorch._vmap_decrement_nesting()
         _saved_tensors_hooks_enable = torch._C._autograd._saved_tensors_hooks_enable()
 
-        movedim = child_8.movedim(0, -1);  child_8 = None
+        movedim = child_7.movedim(0, -1);  child_7 = None
         split = movedim.split((12,), dim = -1);  movedim = None
         jac_out_in = split[0];  split = None
 
         unflatten = jac_out_in.unflatten(-1, (4, 3));  jac_out_in = None
 
-        movedim_1 = child_9.movedim(0, -1);  child_9 = None
+        movedim_1 = child_8.movedim(0, -1);  child_8 = None
         split_1 = movedim_1.split((12,), dim = -1);  movedim_1 = None
         jac_out_in_1 = split_1[0];  split_1 = None
 
