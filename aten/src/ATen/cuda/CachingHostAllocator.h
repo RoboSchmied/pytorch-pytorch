@@ -2,6 +2,7 @@
 
 #include <c10/core/Allocator.h>
 #include <c10/cuda/CUDAStream.h>
+#include <ATen/core/CachingHostAllocator.h>
 
 namespace at::cuda {
 
@@ -16,9 +17,6 @@ namespace at::cuda {
 // called anytime a pointer from this allocator is used in a cudaMemcpyAsync
 // call between host and device, and passed the corresponding context from the
 // allocation. This is currently invoked by at::native::copy_kernel_cuda.
-//
-// Note that this allocator does not split larger allocations into smaller
-// blocks, unlike the caching device allocator.
 //
 TORCH_CUDA_CPP_API c10::Allocator* getCachingHostAllocator();
 
