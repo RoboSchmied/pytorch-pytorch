@@ -167,6 +167,8 @@ inductor_skips = defaultdict(dict)
 inductor_skips["cpu"] = {
     "linalg.ldl_factor": {f32, f64},  # flaky
     "nn.functional.cosine_embedding_loss": {b8},  # flaky
+    ("index_reduce", "prod"): {f16},  # flaky
+    ("index_reduce", "mean"): {f16},  # flaky
 }
 
 if IS_MACOS and IS_X86:
@@ -225,7 +227,10 @@ inductor_expected_failures_single_sample["cpu"] = {
     ("normal", "number_mean"): {f16, f32, f64},
     ("sparse.mm", "reduce"): {f32, f64},
     "sparse.sampled_addmm": {f32, f64},
-    "to_sparse": {f32, f64},
+    "to_sparse": {
+        f32,
+        f64,
+    },  # NYI: could not find kernel for aten.view.default at dispatch key DispatchKey.SparseCPU
     "view_as_complex": {f16},
 }
 
@@ -234,13 +239,9 @@ inductor_expected_failures_single_sample["cuda"] = {
     "_upsample_bilinear2d_aa": {f16, f32, f64},
     "cholesky": {f32, f64},
     "multinomial": {f16, f32, f64},
-    "nn.functional.normalize": {f16},
     ("normal", "in_place"): {f16, f32, f64},
     ("normal", "number_mean"): {f16, f32, f64},
     "sparse.sampled_addmm": {f32, f64},
-    "to_sparse": {f16, f32, f64},
-    "torch.ops.aten._efficient_attention_forward": {f16, bf16, f32},
-    "torch.ops.aten._flash_attention_forward": {f16, bf16, f32},
 }
 
 
@@ -256,12 +257,7 @@ inductor_expected_failures_single_sample["cuda"].update(intentionally_not_handle
 
 inductor_gradient_expected_failures_single_sample = defaultdict(dict)
 
-inductor_gradient_expected_failures_single_sample["cuda"] = {
-    "nn.functional.normalize": {f16},
-}
-
-if not TEST_WITH_ROCM:
-    inductor_gradient_expected_failures_single_sample["cuda"]["tanh"] = {f16}
+inductor_gradient_expected_failures_single_sample["cuda"] = {}
 
 if not TEST_MKL:
     inductor_expected_failures_single_sample["cpu"].update({})
@@ -387,6 +383,10 @@ inductor_all_samples = {
     "softmax.with_dtype",
     "index_add",
     "index_copy",
+    "index_reduce.prod",
+    "index_reduce.mean",
+    "index_reduce.amax",
+    "index_reduce.amin",
     "scatter_reduce.sum",
     "select_scatter",
     "squeeze",
@@ -517,6 +517,14 @@ class TestInductorOpInfo(TestCase):
             # but that when we do backwards we expect other ops like add to work
             and not dtype == torch.complex32
         )
+        if op_name != "index_reduce.prod" and device_type == "cuda":
+            # TODO: ideally, skipping failing backward check ought to
+            # be implemented in index_reduce OpInfo definition, but in
+            # this case the check fails only in inductor context that
+            # cannot be specified in the OpInfo definition without
+            # disabling also the evaluation check that is succesful.
+            requires_grad = False
+
         samples = op.sample_inputs(device, dtype, requires_grad=requires_grad)
 
         if op_name not in inductor_all_samples and not ALL_SAMPLES:

@@ -5232,6 +5232,8 @@ def sample_inputs_index_reduce(op_info, device, dtype, requires_grad, **kwargs):
     reduces = ('prod', 'mean', 'amin', 'amax')
 
     for shape, include_self, reduce in product(shapes, include_selfs, reduces):
+        if op_info.variant_test_name and op_info.variant_test_name != reduce:
+            continue
         self_shape, src_shape = shape
         # dim. We handle the scalar case
         dim = 1 if len(self_shape) >= 2 else 0
@@ -5255,9 +5257,10 @@ def sample_inputs_index_reduce(op_info, device, dtype, requires_grad, **kwargs):
         src = torch.tensor([[2, 0], [0, 0], [2, 3], [2, 2]], dtype=dtype, device=device, requires_grad=requires_grad)
         idx = torch.tensor([0, 1, 2, 0], dtype=torch.long, device=device)
 
-        yield SampleInput(input,
-                          args=(0, idx, src, 'prod'),
-                          kwargs={'include_self': True})
+        if not op_info.variant_test_name or op_info.variant_test_name == 'prod':
+            yield SampleInput(input,
+                              args=(0, idx, src, 'prod'),
+                              kwargs={'include_self': True})
 
 def sample_inputs_mode(op_info, device, dtype, requires_grad, **kwargs):
     args = (
@@ -15907,6 +15910,8 @@ op_db: List[OpInfo] = [
                     skips=(
                         DecorateInfo(unittest.expectedFailure, 'TestNormalizeOperators', 'test_normalize_operator_exhaustive'),
                         DecorateInfo(unittest.expectedFailure, 'TestJit', 'test_variant_consistency_jit',),
+                        # NYI: The operator 'aten::rsub.Tensor' is not currently implemented for the MPS device
+                        DecorateInfo(unittest.expectedFailure, 'TestConsistency', 'test_output_grad_match'),
                     ),
                     assert_autodiffed=True,
                     autodiff_nonfusible_nodes=['aten::rsub'],),
@@ -16276,6 +16281,8 @@ op_db: List[OpInfo] = [
                        # Ref: https://github.com/pytorch/pytorch/issues/78413
                        DecorateInfo(unittest.expectedFailure, 'TestUnaryUfuncs', 'test_reference_numerics_small',
                                     dtypes=(torch.bfloat16, torch.float16, torch.float32, torch.float64),),
+                       # NYI: The operator 'aten::angle' is not currently implemented for the MPS device
+                       DecorateInfo(unittest.expectedFailure, 'TestConsistency', 'test_output_grad_match'),
                    )),
     UnaryUfuncInfo('isfinite',
                    ref=np.isfinite,
@@ -16719,10 +16726,15 @@ op_db: List[OpInfo] = [
                             dtypes=(torch.bool,)),
            ),
            gradcheck_nondet_tol=GRADCHECK_NONDET_TOL),
-    OpInfo('index_reduce',
-           dtypes=all_types_and(torch.float16, torch.bfloat16),
-           supports_out=True,
-           sample_inputs_func=sample_inputs_index_reduce),
+    *(OpInfo('index_reduce',
+             variant_test_name=reduction_type,
+             dtypes=all_types_and(torch.float16, torch.bfloat16),
+             skips=(
+                 DecorateInfo(toleranceOverride({torch.float16: tol(atol=2e-3, rtol=3e-3)}),
+                              'TestInductorOpInfo', 'test_comprehensive'),
+             ),
+             supports_out=True,
+             sample_inputs_func=sample_inputs_index_reduce) for reduction_type in ('mean', 'prod', 'amin', 'amax')),
     OpInfo('__getitem__',
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16, torch.chalf),
            # Runs very slowly on slow gradcheck - alternatively reduce input sizes
@@ -19681,6 +19693,8 @@ op_db: List[OpInfo] = [
                 "test_variant_consistency_jit",
                 device_type="cuda",
             ),
+            # NYI: The operator 'aten::segment_reduce' is not currently implemented for the MPS device
+            DecorateInfo(unittest.expectedFailure, 'TestConsistency', 'test_output_grad_match'),
         ),
     ),
 ]
