@@ -1817,6 +1817,26 @@ def as_storage_and_layout(x, freeze=True, want_contiguous=False, stride_order=No
     raise NotImplementedError
 
 
+def is_pointwise_with_channels_last_inputs(x):
+    if isinstance(x, TensorBox):
+        return is_pointwise_with_channels_last_inputs(x.data)
+    if isinstance(x, StorageBox) and isinstance(x.data, Pointwise):
+        reads = x.data.get_reads()
+        reads_bufs = []
+        for r in reads:
+            if r.name in V.graph.name_to_buffer.keys():
+                reads_bufs.append(V.graph.name_to_buffer[r.name])
+            elif r.name in V.graph.graph_inputs_original.keys():
+                reads_bufs.append(V.graph.graph_inputs_original[r.name])
+
+        return len(reads) >= 1 and all(
+            isinstance(buf.layout, FixedLayout)
+            and buf.layout.is_channels_last_contiguous()
+            for buf in reads_bufs
+        )
+    return False
+
+
 as_contiguous_storage_and_layout = functools.partial(
     as_storage_and_layout, want_contiguous=True
 )
@@ -3698,6 +3718,12 @@ class ConcatKernel(NopKernel):
                     # use CL stride for the output
                     output_stride = make_channels_last_strides_for(new_size)
                     break
+        any_input_is_storage_and_layout = any(is_storage_and_layout(x) for x in inputs)
+        if any_input_is_storage_and_layout is False:
+            if all(
+                is_pointwise_with_channels_last_inputs(input) for input in inputs
+            ) and len(new_size) in [4, 5]:
+                output_stride = make_channels_last_strides_for(new_size)
 
         concat_kernel = ConcatKernel(
             name=None,
