@@ -3976,9 +3976,33 @@ class ExternKernel(InputsKernel):
         if isinstance(x, ReinterpretView):
             return x
 
+        x_unwrap_view = x.unwrap_view()
         # NOTE: Don't use extract_read_writes here as it fails when
         # make_loader() inlines the computation
-        x.unwrap_view().freeze_layout()
+        reads = x_unwrap_view.get_reads()
+        reads_bufs = []
+        for r in reads:
+            if r.name in V.graph.name_to_buffer.keys():
+                reads_bufs.append(V.graph.name_to_buffer[r.name])
+            elif r.name in V.graph.graph_inputs_original.keys():
+                reads_bufs.append(V.graph.graph_inputs_original[r.name])
+        # If the dims of x.unwrap_view() are 4 or 5 and any input to x.unwrap_view() is in CL format,
+        # freeze the layout of x.unwrap_view() in CL format.
+        if (
+            isinstance(x_unwrap_view.layout, FlexibleLayout)
+            and len(x_unwrap_view.get_size()) in [4, 5]
+            and any(
+                isinstance(buf.layout, FixedLayout)
+                and buf.layout.is_channels_last_contiguous()
+                for buf in reads_bufs
+            )
+        ):
+            x_unwrap_view.freeze_layout_with_same_order(
+                make_channels_last_strides_for(x_unwrap_view.get_size())
+            )
+        else:
+            x_unwrap_view.freeze_layout()
+
         index_args, var_ranges = dependencies.index_vars_squeeze(
             x.get_size(), prefix="r"
         )
