@@ -47,7 +47,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyCUDA, onlyCPU,
     dtypes, dtypesIfCUDA, dtypesIfCPU, deviceCountAtLeast,
-    skipMeta,
+    skipMeta, precisionOverride,
     PYTORCH_CUDA_MEMCHECK, largeTensorTest, onlyNativeDeviceTypes,
     get_all_device_types, skipXLA)
 from typing import Tuple
@@ -5932,7 +5932,7 @@ else:
         for optimizer_ctor in (torch.optim.SGD, torch.optim.Adam, torch.optim.AdamW):
             self._grad_scaling_autocast_test(device=device.type, optimizer_ctor=optimizer_ctor, optimizer_kwargs={"foreach": True})
 
-    @onlyCUDA
+    @onlyNativeDeviceTypes
     def test_grad_scaling_autocast_fused(self, device):
         device = torch.device(device)
         for optimizer_ctor in (torch.optim.Adam, torch.optim.AdamW):
@@ -5952,8 +5952,6 @@ else:
                 {"foreach": False, "fused": True},
             ),
         ):
-            if device.type != "cuda":
-                optimizer_kwargs['fused'] = False
             with self.subTest(optimizer=optimizer_ctor, optimizer_kwargs=optimizer_kwargs):
                 self._test_grads_invalidated_between_unscale_and_step(device.type, optimizer_ctor, optimizer_kwargs)
 
@@ -5994,6 +5992,54 @@ else:
         scaler.step(optimizer)
         scaler.update()
         assert scaler._scale != float("inf") and scaler._scale != float("nan")
+
+    @onlyNativeDeviceTypes
+    @skipIfTorchDynamo("https://github.com/pytorch/pytorch/issues/123238")
+    @dtypes(*floating_types_and(torch.bfloat16, torch.half))
+    @precisionOverride({torch.half : 1e-3, torch.bfloat16 : 1e-3})
+    def test_fused_adam_and_adamw(self, device, dtype):
+        r"""
+        This testcase will compare the results between
+        1. _single_tensor_adam and _fused_adam.
+        2. _single_tensor_adamw and _fused_adamw.
+        """
+        from torch.optim.adam import _single_tensor_adam, _fused_adam
+        from torch.optim.adamw import _single_tensor_adamw, _fused_adamw
+
+        def _test_fused_adam_base(kwargs, fused_func, non_fused_func):
+            non_fused_kwargs = copy.deepcopy(kwargs)
+            fused_kwargs = copy.deepcopy(kwargs)
+            non_fused_func(**non_fused_kwargs)
+            fused_func(**fused_kwargs)
+            self.assertEqual(non_fused_kwargs, fused_kwargs)
+
+        # generate input args
+        TENSOR_SIZE = (33, )  # make sure to cover cpu vec and scalar
+        NPARAM = 3
+        kwargs = {}
+        kwargs['params'] = [torch.randn(TENSOR_SIZE, device=device, dtype=dtype) for _ in range(NPARAM)]
+        kwargs['grads'] = [torch.randn(TENSOR_SIZE, device=device, dtype=dtype) for _ in range(NPARAM)]
+        kwargs['exp_avgs'] = [torch.randn(TENSOR_SIZE, device=device, dtype=dtype) for _ in range(NPARAM)]
+        kwargs['exp_avg_sqs'] = [torch.randn(TENSOR_SIZE, device=device, dtype=dtype) for _ in range(NPARAM)]
+        kwargs['state_steps'] = [torch.tensor([10.0], device=device) for _ in range(NPARAM)]
+        kwargs['grad_scale'] = None
+        kwargs['found_inf'] = None
+        kwargs['beta1'] = 0.9
+        kwargs['beta2'] = 0.999
+        kwargs['lr'] = 0.1
+        kwargs['eps'] = 1e-8
+        kwargs['has_complex'] = False
+        kwargs['capturable'] = False
+        kwargs['differentiable'] = False
+        for amsgrad, maximize, weight_decay in product([True, False], [True, False], [0.0, 0.1]):
+            kwargs['amsgrad'] = amsgrad
+            kwargs['maximize'] = maximize
+            kwargs['weight_decay'] = weight_decay
+            kwargs['max_exp_avg_sqs'] = []
+            if amsgrad:
+                kwargs['max_exp_avg_sqs'] = [torch.randn(TENSOR_SIZE, device=device, dtype=dtype) for _ in range(NPARAM)]
+            _test_fused_adam_base(kwargs, _fused_adam, _single_tensor_adam)
+            _test_fused_adam_base(kwargs, _fused_adamw, _single_tensor_adamw)
 
     @onlyNativeDeviceTypes
     def test_grad_scaling_clipping(self, device):
