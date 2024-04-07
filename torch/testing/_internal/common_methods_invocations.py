@@ -16734,7 +16734,8 @@ op_db: List[OpInfo] = [
                               'TestInductorOpInfo', 'test_comprehensive'),
              ),
              supports_out=True,
-             sample_inputs_func=sample_inputs_index_reduce) for reduction_type in ('mean', 'prod', 'amin', 'amax')),
+             sample_inputs_func=sample_inputs_index_reduce,
+             ) for reduction_type in ('mean', 'prod', 'amin', 'amax')),
     OpInfo('__getitem__',
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16, torch.chalf),
            # Runs very slowly on slow gradcheck - alternatively reduce input sizes
